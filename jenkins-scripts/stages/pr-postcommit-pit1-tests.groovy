@@ -1,14 +1,16 @@
 /*
- * Copyright 2019-2020 ForgeRock AS. All Rights Reserved
+ * Copyright 2019-2021 ForgeRock AS. All Rights Reserved
  *
  * Use of this code requires a commercial software license with ForgeRock AS.
  * or with one of its affiliates. All use shall be exclusively subject
  * to such license between the licensee and ForgeRock AS.
  */
 
-import com.forgerock.pipeline.reporting.PipelineRun
+// pr-postcommit-pit1-tests.groovy
 
-void runStage(PipelineRun pipelineRun, Random random) {
+import com.forgerock.pipeline.reporting.PipelineRunLegacyAdapter
+
+void runStage(PipelineRunLegacyAdapter pipelineRun, Random random) {
 
     def stageName = 'PIT1'
     def normalizedStageName = dashboard_utils.normalizeStageName(stageName)
@@ -17,34 +19,26 @@ void runStage(PipelineRun pipelineRun, Random random) {
     pipelineRun.pushStageOutcome(normalizedStageName, stageDisplayName: stageName) {
         node('google-cloud') {
             stage(stageName) {
-                pipelineRun.updateStageStatusAsInProgress()
-
                 def forgeopsPath = localGitUtils.checkoutForgeops()
-
-                def gitBranch = isPR() ? "origin/pr/${env.CHANGE_ID}" : 'master'
 
                 dir('lodestar') {
                     def stagesCloud = [:]
+                    stagesCloud[normalizedStageName] = dashboard_utils.spyglaasStageCloud(normalizedStageName)
 
-                    def subStageName = isPR() ? 'pr' : 'postcommit'
-                    stagesCloud[subStageName] = dashboard_utils.spyglaasStageCloud(subStageName)
-
-                    dashboard_utils.determineUnitOutcome(stagesCloud[subStageName]) {
+                    dashboard_utils.determineUnitOutcome(stagesCloud[normalizedStageName]) {
                         def config = [
                             TESTS_SCOPE             : 'tests/pit1',
                             STASH_LODESTAR_BRANCH   : commonModule.LODESTAR_GIT_COMMIT,
                             EXT_FORGEOPS_PATH       : forgeopsPath,
                             CLUSTER_NAMESPACE       : cloud_config.commonConfig()['CLUSTER_NAMESPACE'] + '-' + randomNumber,
-                            REPORT_NAME_PREFIX      : subStageName,
+                            REPORT_NAME_PREFIX      : normalizedStageName,
+                            RUN_INSIDE_CLUSTER      : true,
                         ]
 
                         withGKESpyglaasNoStages(config)
                     }
 
-                    summaryReportGen.createAndPublishSummaryReport(stagesCloud, stageName, '', false,
-                        normalizedStageName, "${normalizedStageName}.html")
-                    return dashboard_utils.determineLodestarOutcome(stagesCloud,
-                        "${env.BUILD_URL}/${normalizedStageName}/")
+                    return dashboard_utils.finalLodestarOutcome(stagesCloud, stageName)
                 }
             }
         }

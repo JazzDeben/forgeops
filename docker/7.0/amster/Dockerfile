@@ -1,7 +1,14 @@
-FROM gcr.io/forgerock-io/amster/pit1:7.1.0-65e3a87075f16515a72b299d35dbf99261f93eef
+FROM gcr.io/forgerock-io/amster/pit1:7.1.0-2af7fef41b33952bb87abb8722dacd596c05c0c1
 
 USER root
-RUN apt-get install -y openldap-utils jq
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV APT_OPTS="--no-install-recommends --yes"
+RUN apt-get update \
+        && apt-get install -y openldap-utils jq inotify-tools \
+        && apt-get clean \
+        && rm -r /var/lib/apt/lists /var/cache/apt/archives
+
 USER forgerock
 
 ENV SERVER_URI /am

@@ -8,10 +8,35 @@
 set -o errexit
 set -o pipefail
 
+#####
+# Code for ForgeRock staff only
+#####
+FO_ENV=${FO_ENV:-env}
+# Load and enforce tags
+cd "$(dirname "$0")" && . ../../bin/lib-entsec-asset-tag-policy.sh
+if [[ -f $HOME/.forgeops.${FO_ENV}.sh ]];
+then
+    . $HOME/.forgeops.${FO_ENV}.sh
+fi
+is_fr_staff=$(IsForgeRock)
+if [ "$is_fr_staff" == "yes" ];
+then
+    if ! EnforceEntSecTags;
+    then
+        echo "ForgeRock staff are required to have tags that meet Enterprise Security rules."
+        echo "Please review $HOME/.forgeops.${ENV}.sh"
+        echo "If this isn't applicable run with the environment variable IS_FORGEROCK=no"
+        exit 1
+    fi
+    ASSET_LABELS="--labels es_zone=${ES_ZONE},es_ownedby=${ES_OWNEDBY},es_managedby=${ES_MANAGEDBY},es_businessunit=${ES_BUSINESSUNIT},es_useremail=${ES_USEREMAIL},billing_entity=${BILLING_ENTITY}"
+    ADDITIONAL_OPTS+="${ASSET_LABELS} "
+fi
+#####
+# End code for ForgeRock staff only
+#####
+
 # Cluster name.
 NAME=${NAME:-small}
-
-
 # Default these values from the users configuration
 PROJECT_ID=$(gcloud config list --format 'value(core.project)')
 PROJECT=${PROJECT:-$PROJECT_ID}
@@ -19,6 +44,13 @@ PROJECT=${PROJECT:-$PROJECT_ID}
 # Get the default region
 R=$(gcloud config list --format 'value(compute.region)')
 REGION=${REGION:-$R}
+
+echo "Deploying to region: $REGION"
+
+if [ -z "$REGION" ]; then
+  echo "Please set region in your gcloud config 'gcloud config set compute/region <region>' or in <my-cluster>.sh";
+  exit 1
+fi
 
 # Where nodes run. We use 3 zones
 NODE_LOCATIONS=${NODE_LOCATIONS:-"$REGION-a,$REGION-b,$REGION-c"}
@@ -28,9 +60,9 @@ ZONE=${ZONE:-"$REGION-a"}
 MACHINE=${MACHINE:-e2-standard-8}
 DS_MACHINE=${DS_MACHINE:-n2-standard-8}
 
-# Set to "false" if you do not want to create a separate pool for ds nodes
-CREATE_DS_POOL="${CREATE_DS_POOL:-true}"
-
+# Create a separate node pool for ds
+CREATE_DS_POOL="${CREATE_DS_POOL:-false}"
+ADDITIONAL_OPTS=""
 
 # Get current user
 CREATOR="${USER:-unknown}"
@@ -45,7 +77,7 @@ DEFAULT_POOL_LABELS="frontend=true"
 if [ "$CREATE_DS_POOL" == "false" ]; then
   # If there is no ds node pool we must label the primary node pool to allow
   # ds pods to be scheduled there.
-  DEFAULT_POOL_LABELS="${DEFAULT_POOL_LABELS},forgerock.io/role=ds"
+  DEFAULT_POOL_LABELS="${DEFAULT_POOL_LABELS},forgerock.io/role=ds,forgerock.io/cluster=${NAME}"
 fi
 
 
@@ -72,6 +104,7 @@ DS_NUM_NODES=${DS_NUM_NODES:-"1"}
 # BY default we disable autoscaling for CDM. If you wish to use autoscaling, uncomment the following:
 #AUTOSCALE="--enable-autoscaling --min-nodes 0 --max-nodes 3"
 
+# shellcheck disable=SC2086
 gcloud beta container --project "$PROJECT" clusters create "$NAME" \
     --zone "$ZONE" \
     --node-locations "$NODE_LOCATIONS" \
@@ -92,12 +125,10 @@ gcloud beta container --project "$PROJECT" clusters create "$NAME" \
     --subnetwork "$SUB_NETWORK" \
     --default-max-pods-per-node "110" \
     --no-enable-master-authorized-networks \
-    --addons HorizontalPodAutoscaling,ConfigConnector \
+    --addons HorizontalPodAutoscaling,ConfigConnector,GcePersistentDiskCsiDriver \
     --workload-pool "$PROJECT.svc.id.goog" \
-    --labels "createdby=$CREATOR" \
     --enable-autoupgrade --enable-autorepair --max-surge-upgrade 1 --max-unavailable-upgrade 0 \
-    $AUTOSCALE  # Note: Do not quote this variable. It needs to expand
-
+    $ADDITIONAL_OPTS  # Note: Do not quote this variable. It needs to expand
 
 # Create the DS pool. This pool does not autoscale.
 
@@ -111,7 +142,7 @@ if [ "$CREATE_DS_POOL" == "true" ]; then
     --disk-type "pd-ssd" \
     --disk-size "100" \
     --metadata disable-legacy-endpoints=true \
-    --node-labels forgerock.io/role=ds \
+    --node-labels forgerock.io/role=ds,forgerock.io/cluster=${NAME} \
     --node-taints WorkerDedicatedDS=true:NoSchedule \
     --scopes "https://www.googleapis.com/auth/devstorage.read_only","https://www.googleapis.com/auth/logging.write","https://www.googleapis.com/auth/monitoring","https://www.googleapis.com/auth/servicecontrol","https://www.googleapis.com/auth/service.management.readonly","https://www.googleapis.com/auth/trace.append" \
     "$PREEMPTIBLE" \
@@ -130,6 +161,16 @@ parameters:
 provisioner: kubernetes.io/gce-pd
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
+EOF
+
+# Create the volume snapshot class
+kubectl create -f - <<EOF
+apiVersion: snapshot.storage.k8s.io/v1beta1
+kind: VolumeSnapshotClass
+metadata:
+  name: ds-snapshot-class
+driver: pd.csi.storage.gke.io
+deletionPolicy: Delete
 EOF
 
 # Create prod namespace for sample CDM deployment

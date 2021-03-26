@@ -1,31 +1,25 @@
 /*
- * Copyright 2020 ForgeRock AS. All Rights Reserved
+ * Copyright 2020-2021 ForgeRock AS. All Rights Reserved
  *
  * Use of this code requires a commercial software license with ForgeRock AS.
  * or with one of its affiliates. All use shall be exclusively subject
  * to such license between the licensee and ForgeRock AS.
  */
 
+// perf-sprint-release-tests.groovy
 
-import com.forgerock.pipeline.reporting.PipelineRun
-import com.forgerock.pipeline.stage.FailureOutcome
-import com.forgerock.pipeline.stage.Outcome
-import com.forgerock.pipeline.stage.Status
+import com.forgerock.pipeline.reporting.PipelineRunLegacyAdapter
 
-void runStage(PipelineRun pipelineRun) {
+void runStage(PipelineRunLegacyAdapter pipelineRun) {
 
     def stageName = 'PERF Sprint Release'
     def normalizedStageName = dashboard_utils.normalizeStageName(stageName)
 
     pipelineRun.pushStageOutcome(normalizedStageName, stageDisplayName: stageName) {
-        node('google-cloud') {
+        node('perf-long-cloud') {
             stage(stageName) {
-                pipelineRun.updateStageStatusAsInProgress()
                 def forgeopsPath = localGitUtils.checkoutForgeops()
-                cloud_utils.authenticate_gcloud()
-                cloud_utils.scaleClusterNodePool('perf-sprint-release', 'ds', 'us-east4', 8)
-                cloud_utils.scaleClusterNodePool('perf-sprint-release', 'frontend', 'us-east4', 2)
-                cloud_utils.scaleClusterNodePool('perf-sprint-release', 'default-pool', 'us-east4', 8)
+
                 dir('lodestar') {
                     def config_common = [
                         STASH_LODESTAR_BRANCH   : commonModule.LODESTAR_GIT_COMMIT,
@@ -47,9 +41,11 @@ void runStage(PipelineRun pipelineRun) {
                     dashboard_utils.determineUnitOutcome(stagesCloud[subStageName]) {
                         def config = config_common.clone()
                         config += [
-                            TEST_NAME       : "authn_rest",
-                            BASELINE_RPS    : '2550',
-                            SET_OPTIONS     : "--set phases['scenario'].duration=6 --set phases['scenario'].duration-unit=h --set components.servers['ds-idrepo'].num-entries=10000000",
+                            TEST_NAME                  : "authn_rest",
+                            DEPLOYMENT_RESTOREBUCKETURL: 'gs://performance-bucket-us-east1/nemanja/3ds-10M-bis',
+                            DEPLOYMENT_MAKEBACKUP      : false,
+                            CONFIGFILE_NAME            : 'conf-stability.yaml',
+                            BASELINE_RPS               : '2550',
                         ]
 
                         withGKEPyrockNoStages(config)
@@ -62,9 +58,11 @@ void runStage(PipelineRun pipelineRun) {
                     dashboard_utils.determineUnitOutcome(stagesCloud[subStageName]) {
                         def config = config_common.clone()
                         config += [
-                            TEST_NAME       : "access_token",
-                            BASELINE_RPS    : '[3075,3115]',
-                            SET_OPTIONS     : "--set phases['scenario'].duration=6 --set phases['scenario'].duration-unit=h --set components.servers['ds-idrepo'].num-entries=10000000",
+                            TEST_NAME                  : "access_token",
+                            DEPLOYMENT_RESTOREBUCKETURL: 'gs://performance-bucket-us-east1/nemanja/3ds-10M-bis',
+                            DEPLOYMENT_MAKEBACKUP      : false,
+                            BASELINE_RPS               : '[2733,2453]',
+                            CONFIGFILE_NAME            : 'conf-stability.yaml',
                         ]
 
                         withGKEPyrockNoStages(config)
@@ -77,23 +75,34 @@ void runStage(PipelineRun pipelineRun) {
                     dashboard_utils.determineUnitOutcome(stagesCloud[subStageName]) {
                         def config = config_common.clone()
                         config += [
-                            TEST_NAME       : "platform",
-                            BASELINE_RPS    : '[1983,1722,1136,360]',
-                            SET_OPTIONS     : "--set phases['scenario'].duration=6 --set phases['scenario'].duration-unit=h",
+                            TEST_NAME                  : "platform",
+                            DEPLOYMENT_RESTOREBUCKETURL: 'gs://performance-bucket-us-east1/nemanja/platform-backup',
+                            DEPLOYMENT_MAKEBACKUP      : false,
+                            BASELINE_RPS               : '[1983,1722,1136,360]',
+                            CONFIGFILE_NAME            : 'conf-restore-1m-stability.yaml'
                         ]
 
                         withGKEPyrockNoStages(config)
                     }
 
-                    summaryReportGen.createAndPublishSummaryReport(stagesCloud, stageName, '', false,
-                        normalizedStageName, "${normalizedStageName}.html")
-                    return dashboard_utils.determineLodestarOutcome(stagesCloud,
-                        "${env.BUILD_URL}/${normalizedStageName}/")
-                }
+                    // perf IDM Crud test
+                    subStageName = 'idm_crud_long'
+                    stagesCloud[subStageName] = dashboard_utils.pyrockStageCloud('simple_managed_users')
 
-                cloud_utils.scaleClusterNodePool('perf-sprint-release', 'ds', 'us-east4', 0)
-                cloud_utils.scaleClusterNodePool('perf-sprint-release', 'frontend', 'us-east4', 0)
-                cloud_utils.scaleClusterNodePool('perf-sprint-release', 'default-pool', 'us-east4', 1)
+                    dashboard_utils.determineUnitOutcome(stagesCloud[subStageName]) {
+                        def config = config_common.clone()
+                        config += [
+                                TEST_NAME                  : "simple_managed_users",
+                                CONFIGFILE_NAME            : 'conf-restore-backup-1m-stability.yaml',
+                                DEPLOYMENT_RESTOREBUCKETURL: 'gs://performance-bucket-us-east1/tinghua/1m',
+                                DEPLOYMENT_MAKEBACKUP      : false,
+                        ]
+
+                        withGKEPyrockNoStages(config)
+                    }
+
+                    return dashboard_utils.finalLodestarOutcome(stagesCloud, stageName)
+                }
             }
         }
     }

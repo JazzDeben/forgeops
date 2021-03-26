@@ -1,43 +1,30 @@
-# Tekton demo / poc
+# Tekton Nightly Deployment
 
-This demonstrates the use of tekton to build and deploy our nightly environment in a cluster using the skaffold and kaniko builder.
-The entire build happens in the cluster itself. No external tooling is required.
+This sample pipeline demonstrates the use of Tekton to build and deploy our 
+nightly environment using Skaffold and Kaniko.
 
-## Pre-reqs
+The entire build happens in the cluster itself. No external tooling is required. 
+All persistent data is deleted, and the environment is deployed fresh every 24 
+hours.
 
-* Create a `kaniko-secret` in the default namespace. `kubectl create secret generic kaniko-secret --from-file=kaniko-secret`.
-   The secret is the GCP service account json that has privileges to push/pull images to gcr.io
-* Optional: install the tkn cli tool. More information: https://github.com/tektoncd/cli  
-  You can perform actions like trigger pipeplines runs or obtain pipeline logs:  
-    tkn -n tekton-pipelines pipelinerun logs nightly-pipeline-run-lf7tn -f #get pipeline logs  
-    tkn -n tekton-pipelines pipeline start nightly-pipeline -s tekton-worker #start a pipeline  
-  For more information on `tkn`, take a look at https://github.com/tektoncd/cli/tree/master/docs
-* A secret is required for SLACK Integration
-
-## Install the pipeline
-
-Run the shell script `forgeops/cicd/tekton/install-tekton.sh` to install tekton in your cluster. Then, run `./install-pipeline.sh`. This will install the pipeline and all other required elements in the `tekton-pipelines` namespace.
-
-Note: The nightly pipeline is configured to trigger automatically daily at 9:00 Mon-Fri ("0 9 * * 1-5"). If you want to change/remove this trigger, you can modify/remove nightly-trigger.yaml with the desired configuration.
-
-The Tekton dashboard is included in this install. To map the dashboard, you can run:
-
-```
-# Map the svc port
-kubectl --namespace tekton-pipelines port-forward svc/tekton-dashboard 9097:9097
-# open http://localhost:9097 in your browser
-```
+The nightly pipeline is configured to trigger automatically daily at 9:00 
+Mon-Fri (`"0 9 * * 1-5"`). To change this trigger, modify the 
+`cicd/tekton/nightly/nightly-trigger.yaml` file, providing your desired 
+configuration.
 
 ## Manually Triggering the Pipeline
 
-The pipeline is triggered by a Kubernetes Cronjob. You can manually re-run the pipeline using the following command:
+The pipeline is triggered by a Kubernetes cron job. You can manually run the 
+pipeline using the following command:
 
 ```bash
 tkn -n tekton-pipelines pipeline start nightly-pipeline -s tekton-worker #start a pipeline
 ```
-Note: You'll need to provide information about your repo like url and branch/commit id
 
-If you don't have `tkn` installed, you can also start the pipeline by manually triggering the cronjob
+You'll need to provide the repository URL, branch, and commit ID.
+
+If you don't have the `tkn` command installed, you can also start the pipeline 
+by manually triggering the cron job:
 
 ```bash
 kubectl -n tekton-pipelines create job --from=cronjob/nightly-cronjob manual-run

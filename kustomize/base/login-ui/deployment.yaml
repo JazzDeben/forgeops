@@ -13,7 +13,7 @@ spec:
         app: login-ui
     spec:
       containers:
-      - image: gcr.io/forgerock-io/platform-login-ui/docker-build:7.1.0-c3de2be74a7016e925522954dca3277a403b2833
+      - image: gcr.io/forgerock-io/platform-login-ui/docker-build:7.1.0-eb7e162563f00c850d76b5eb7f53768ebc9c9fc7
         imagePullPolicy: IfNotPresent
         envFrom:
         - configMapRef:
@@ -37,3 +37,8 @@ spec:
           httpGet:
             path: /
             port: http
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/usr/sbin/nginx", "-s", "quit"]
+

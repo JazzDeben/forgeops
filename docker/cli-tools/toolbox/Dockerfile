@@ -1,48 +1,57 @@
-ARG VERSION=latest
-ARG FORGEOPS_REGISTRY=gcr.io/engineering-devops
-FROM gcr.io/google-containers/pause:latest as pause
+FROM debian:buster as builder
 
-ARG VERSION=latest
-ARG FORGEOPS_REGISTRY=gcr.io/engineering-devops
-FROM $FORGEOPS_REGISTRY/yamkt:$VERSION-skaffold as finale
-ARG COMMON_SCRIPT_SOURCE="https://raw.githubusercontent.com/microsoft/vscode-dev-containers/master/script-library/common-debian.sh"
+RUN apt-get update \
+        && apt-get install -y curl ca-certificates bash --no-install-recommends
+
+ARG KUSTOMIZE_VERSION=latest
+ARG KUBECTL_VERSION=latest
+
+RUN mkdir -p /opt/bin \
+        && curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+        && cp kubectl /opt/bin  \
+        && curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"  | bash \
+        && cp kustomize /opt/bin \
+        && chmod a+rx /opt/bin/*
+
+# Skaffold
+RUN curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64 \
+        && chmod +x skaffold && mv skaffold /opt/bin
+
+# TODO: Pull the forgeops cli
+#  RUN curl -LO https://github.com/ForgeRock/forgeops-cli/releases/latest/download/todo \
+#         && tar xvfz
+
+FROM debian:buster
+ARG VSCODE_CONTAINERS="https://raw.githubusercontent.com/microsoft/vscode-dev-containers/master/script-library/common-debian.sh"
 ENV DEBIAN_FRONTEND=noninteractive
 SHELL ["/bin/bash", "-c"]
 
-RUN adduser --disabled-password forgeops --no-create-home --home /opt/workspace --gid 0 \
+RUN useradd forgerock --home /opt/workspace --gid 0 \
+        && apt-get update \
+        && apt-get install -y curl ca-certificates vim bash procps git netcat dnsutils tmux ldap-utils  \
         && mkdir -m 0770 -p /opt/{workspace,build} \
-        && chown forgeops:root /opt/{workspace,build}
-COPY --from=pause /pause /usr/local/bin/pause
-# VScode prereqs from https://code.visualstudio.com/docs/remote/linux#_remote-host-container-wsl-linux-prerequisites
-RUN apt-get update && apt-get install --yes vim jq curl dnsutils tmux git rsync openssh-server libc6 libstdc++6 \
-        python-minimal ca-certificates tar
+        && chown forgerock:root /opt/{workspace,build}
 
-RUN mkdir -p /opt/build/.local/bin \
-        && mkdir -p /opt/build/.vim/pack/plugins/start \
-        && git clone --depth 1 https://github.com/dense-analysis/ale.git /opt/build/.vim/pack/plugins/start/ale \
-        && git clone --depth 1 https://github.com/preservim/nerdtree.git /opt/build/.vim/pack/plugins/start/nerdtree \
-                && mkdir -p /opt/build/etc/ssh \
-                    && ssh-keygen -t rsa -f /opt/build/etc/ssh_host_rsa_key -N '' \
-                        && cp /etc/ssh/sshd_config /opt/build/etc/sshd_config  \
-                            && sed -i "s@UsePAM yes@UsePAM no@g" /opt/build/etc/sshd_config \
-                                && sed -i "s@#HostKey /etc/ssh/ssh_host_rsa_key@HostKey /opt/workspace/etc/ssh_host_rsa_key@g" /opt/build/etc/sshd_config \
-                                    && echo "AllowUsers forgeops" >> /opt/build/etc/sshd_config \
-                                    && echo "PermitUserEnvironment yes" >> /opt/build/etc/sshd_config \
-                                        && mkdir -p /opt/build/.ssh \
-                                            && chmod -R 0700 /opt/build/.ssh \
-                                                && chown -R forgeops:root /opt/
+# Uncomment for vscode support
+# RUN curl -Lso common.sh ${VSCODE_CONTAINERS} \
+#         && bash common.sh false none automatic automatic false false
 
-USER forgeops
+USER forgerock
 
 RUN echo "PATH=/opt/workspace/bin:$PATH" >> /opt/build/.bashrc \
         && echo "bash -c /opt/build/bin/start-shell.sh" >> /opt/build/.bashrc
 
-COPY --chown=forgeops:root etc /opt/build/etc
-COPY --chown=forgeops:root bin/  /opt/build/bin
-COPY --chown=forgeops:root bin/git-set-fork.sh /usr/local/bin
+COPY --from=gcr.io/google-containers/pause:latest /pause /usr/local/bin/pause
+COPY --from=builder /opt/bin/* /usr/local/bin/
+COPY --chown=forgerock:root etc /opt/build/etc
+COPY --chown=forgerock:root bin/  /opt/build/bin
+COPY --chown=forgerock:root bin/git-set-fork.sh /usr/local/bin
 
 ENV SSH_PORT=4222
 ENV WORKSPACE=/opt/workspace
+
+ENV PATH=/opt/build/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/workspace/forgeops/bin
+
 WORKDIR /opt/workspace
 ENTRYPOINT ["/opt/build/bin/entrypoint.sh"]
 CMD ["/usr/local/bin/pause"]

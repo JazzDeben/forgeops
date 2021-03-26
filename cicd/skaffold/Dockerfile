@@ -1,16 +1,20 @@
-#Download Skaffold
+
+# Dockerfile that packages up Skaffold, Kustomize and kubectl to run under a CI/CD pipeline.
+# Publish this to your registry and update your CI/CD pipelines to point at this image.
+# See the tekton/ folder for an example of a CI/CD pipeline that deploys the ForgeRock Identity Platform.
+
+# Download Skaffold
 FROM alpine as download-skaffold
-ARG SKAFFOLD_VERSION=v1.14.0
+ARG SKAFFOLD_VERSION=v1.20.0
 ENV SKAFFOLD_URL https://storage.googleapis.com/skaffold/releases/${SKAFFOLD_VERSION}/skaffold-linux-amd64
 RUN wget -O skaffold "${SKAFFOLD_URL}"
 RUN chmod +x skaffold
 
-# Download kustomize
-FROM alpine as download-kustomize
-ENV KUSTOMIZE_VERSION 3.8.1
-ENV KUSTOMIZE_URL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz
-RUN wget "${KUSTOMIZE_URL}"
-RUN tar -xzf kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz
+# Download kustomize. The curl method below is the official / documented way of getting kustomize
+FROM  curlimages/curl as download-kustomize
+USER root
+RUN apk add --no-cache bash
+RUN curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"  | bash
 RUN chmod +x kustomize
 
 
@@ -20,7 +24,7 @@ ENV DOCKER_CONFIG=/builder/home/.docker
 RUN mkdir -p /builder/bin && \
     apt-get update && \
     apt-get install --no-install-recommends --no-install-suggests -y \
-    git python unzip && \
+    git python unzip curl wget && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get clean all
 

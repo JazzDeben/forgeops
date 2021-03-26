@@ -1,0 +1,15 @@
+commonLabels:
+  app.kubernetes.io/name: ds
+  app.kubernetes.io/instance: ds-idrepo
+  app.kubernetes.io/component: directory
+  app.kubernetes.io/part-of: forgerock
+resources:
+- ds-idrepo.yaml
+
+images:
+- name: ds-idrepo
+  newName: gcr.io/forgeops-public/ds-idrepo
+  newTag: 7.1-dev
+
+configurations:
+- kustomizeConfig.yaml

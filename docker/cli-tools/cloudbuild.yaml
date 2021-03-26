@@ -1,62 +1,26 @@
+# This is executed when any changes under docker/cli-tools are commited
 timeout: 1200s
 steps:
 - name: 'gcr.io/cloud-builders/docker'
-  id: base
-  entrypoint: 'make'
-  env:                      
-  - "VERSION=$_VERSION"     
-  - "REGISTRY_URL=gcr.io/$PROJECT_ID"
-  args:
-  - '-f'
-  - 'docker/cli-tools/Makefile'
-  - 'yamkt'
+  id: toolbox
+  args: ['build', '-t', 'gcr.io/forgeops-public/toolbox', 'toolbox']
+  dir: docker/cli-tools
+- name: 'gcr.io/cloud-builders/docker'                            
+  args: ['build', '-t', 'gcr.io/engineering-devops/repo', 'repo'] 
+  dir: docker/cli-tools                                           
+  waitFor:
+    - toolbox
 - name: 'gcr.io/cloud-builders/docker'
-  entrypoint: 'make'
-  waitFor: ["base"]
-  env:                    
-  - "VERSION=$_VERSION"    
-  - "REGISTRY_URL=gcr.io/$PROJECT_ID"
-  args:
-  - '-f'
-  - 'docker/cli-tools/Makefile'
-  - 'cdm'
-- name: 'gcr.io/cloud-builders/docker'
-  entrypoint: 'make'
-  waitFor: ["base"]
-  env:                    
-  - "REGISTRY_URL=gcr.io/$PROJECT_ID"
-  - "VERSION=$_VERSION"    
-  args:
-  - '-f'
-  - 'docker/cli-tools/Makefile'
-  - 'cdk'
-- name: 'gcr.io/cloud-builders/docker'
-  entrypoint: 'make'
-  waitFor: ["base"]
-  env:                    
-  - "REGISTRY_URL=gcr.io/$PROJECT_ID"
-  - "VERSION=$_VERSION"    
-  args:
-  - '-f'
-  - 'docker/cli-tools/Makefile'
-  - 'toolbox'
-- name: 'gcr.io/cloud-builders/docker'
-  entrypoint: 'make'
-  waitFor: ["base"]
-  env:                    
-  - "REGISTRY_URL=gcr.io/$PROJECT_ID"
-  - "VERSION=$_VERSION"    
-  args:
-  - '-f'
-  - 'docker/cli-tools/Makefile'
-  - 'debug'
-- name: 'gcr.io/cloud-builders/docker'
-  entrypoint: 'make'
-  waitFor: ["base"]
-  env:                    
-  - "REGISTRY_URL=gcr.io/$PROJECT_ID"
-  - "VERSION=$_VERSION"    
-  args:
-    - '-f'
-    - 'docker/cli-tools/Makefile'
-    - 'repo'
+  args: ['build', '-t', 'gcr.io/forgeops-public/git-server', 'git-server']
+  dir: docker/cli-tools
+  waitFor: ['-']
+- name: 'gcr.io/cloud-builders/docker'                            
+  args: ['build', '-t', 'gcr.io/forgeops-public/patcher:7.1-dev', 'patcher'] 
+  dir: docker/cli-tools                                           
+  waitFor: ['-']
+
+images:
+- gcr.io/forgeops-public/toolbox
+- gcr.io/engineering-devops/repo
+- gcr.io/forgeops-public/git-server
+- gcr.io/forgeops-public/patcher:7.1-dev

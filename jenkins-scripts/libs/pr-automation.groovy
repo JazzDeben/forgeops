@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 ForgeRock AS. All Rights Reserved
+ * Copyright 2019-2021 ForgeRock AS. All Rights Reserved
  *
  * Use of this code requires a commercial software license with ForgeRock AS.
  * or with one of its affiliates. All use shall be exclusively subject
@@ -7,7 +7,7 @@
  */
 
 import com.forgerock.pipeline.GlobalConfig
-import com.forgerock.pipeline.reporting.PipelineRun
+import com.forgerock.pipeline.reporting.PipelineRunLegacyAdapter
 import com.forgerock.pipeline.stage.Status
 
 /**
@@ -18,7 +18,7 @@ import com.forgerock.pipeline.stage.Status
  *
  * @param currentBuildCommit Git commit used in this build.
  */
-void mergeIfAutomatedProductVersionUpdate(PipelineRun pipelineRun, String currentBuildCommit) {
+void mergeIfAutomatedProductVersionUpdate(PipelineRunLegacyAdapter pipelineRun, String currentBuildCommit) {
     String project = scmUtils.getProjectName()
     String repo = scmUtils.getRepoName()
     String creds = credsId()
@@ -30,20 +30,29 @@ void mergeIfAutomatedProductVersionUpdate(PipelineRun pipelineRun, String curren
         String latestPrVersion = PR_DATA.version.toString()
         String latestCommitOnPrBranch = PR_DATA.fromRef.latestCommit
 
-        /*
-         * The commit used in this build could be out of date with the PR if someone pushed while the build was running.
-         * If PR is up to date and commit on target branch is the parent of this commit, merge the PR, else rebase.
-         */
-        if (currentBuildCommit == latestCommitOnPrBranch &&
-                canDoFastForwardMerge(currentBuildCommit, PR_DATA.toRef.latestCommit)) {
-            pipelineRun.pushStageOutcome(
-                    "promote-to-forgeops-${env.CHANGE_TARGET}",
-                    stageDisplayName: "Promote to ForgeOps") {
-                bitbucketUtils.mergePullRequest(creds, project, repo, env.CHANGE_ID, latestPrVersion)
-                return Status.SUCCESS.asOutcome()
+        // https://jira.atlassian.com/browse/BSERV-11511
+        retry (5) {
+            /*
+             * The commit used in this build could be out of date with the PR if someone pushed while the build was running.
+             * If PR is up to date and commit on target branch is the parent of this commit, merge the PR, else rebase.
+             */
+            if (currentBuildCommit == latestCommitOnPrBranch &&
+                    canDoFastForwardMerge(currentBuildCommit, PR_DATA.toRef.latestCommit)) {
+                try {
+                    pipelineRun.pushStageOutcome("promote-to-forgeops-${env.CHANGE_TARGET}",
+                            stageDisplayName: "Promote to ForgeOps") {
+                        bitbucketUtils.mergePullRequest(creds, project, repo, env.CHANGE_ID, latestPrVersion)
+                        return Status.SUCCESS.asOutcome()
+                    }
+                } catch (exception) {
+                    echo "ERROR: Failed to merge PR, possibly due to BSERV-11511 - pausing, then retrying the merge"
+                    echo "Error message from Bitbucket: ${exception.message}"
+                    sleep (10)
+                    throw exception
+                }
+            } else {
+                bitbucketUtils.rebasePullRequest(creds, project, repo, env.CHANGE_ID, latestPrVersion)
             }
-        } else {
-            bitbucketUtils.rebasePullRequest(creds, project, repo, env.CHANGE_ID, latestPrVersion)
         }
     }
 }
@@ -74,19 +83,20 @@ boolean isAutomatedPullRequest() {
 
 /** Get the related product commit hashes for a product increment PR opened automatically by Rockbot. */
 Collection<String> getPrProductCommitHashes() {
-    Set relatedCommits = [].toSet()
+    Map<String, String> relatedCommits = [:]
     scmUtils.fetchRemoteBranch(env.CHANGE_TARGET, scmUtils.getRepoUrl())
 
     // Check changes to products
     commonModule.dockerImages.each { imageKey, image ->
         if (scmUtils.fileHasChangedComparedToBranch(env.CHANGE_TARGET, image.dockerfilePath)) {
-            relatedCommits << image.productCommit
+            String repo = commonModule.productToRepo[imageKey]
+            relatedCommits[repo] = image.productCommit
         }
     }
 
     // Check changes to Lodestar
     if (scmUtils.fileHasChangedComparedToBranch(env.CHANGE_TARGET, commonModule.LODESTAR_GIT_COMMIT_FILE)) {
-        relatedCommits << LODESTAR_GIT_COMMIT
+        relatedCommits['lodestar'] = LODESTAR_GIT_COMMIT
     }
 
     return relatedCommits

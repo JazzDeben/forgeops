@@ -1,14 +1,16 @@
 /*
- * Copyright 2019 ForgeRock AS. All Rights Reserved
+ * Copyright 2019-2021 ForgeRock AS. All Rights Reserved
  *
  * Use of this code requires a commercial software license with ForgeRock AS.
  * or with one of its affiliates. All use shall be exclusively subject
  * to such license between the licensee and ForgeRock AS.
  */
 
+// promote-to-stable-branch.groovy
+
 import groovy.transform.Field
 
-import com.forgerock.pipeline.reporting.PipelineRun
+import com.forgerock.pipeline.reporting.PipelineRunLegacyAdapter
 import com.forgerock.pipeline.stage.Status
 
 /** Local branch used for the promotion step. */
@@ -20,12 +22,10 @@ import com.forgerock.pipeline.stage.Status
 /**
  * Perform the promotion to stable: promote docker images to root level and the relevant commit to 'stable'.
  */
-void runStage(PipelineRun pipelineRun) {
+void runStage(PipelineRunLegacyAdapter pipelineRun) {
     pipelineRun.pushStageOutcome('pit2-promote-to-forgeops-stable', stageDisplayName: 'ForgeOps Stable Promotion') {
         node('build&&linux') {
             stage("Promote to ${STABLE_BRANCH}") {
-                pipelineRun.updateStageStatusAsInProgress()
-
                 // always deep-clone the branch, in order to perform a git merge
                 localGitUtils.deepCloneBranch(scmUtils.getRepoUrl(), env.BRANCH_NAME)
                 sh "git checkout ${commonModule.FORGEOPS_GIT_COMMIT}"

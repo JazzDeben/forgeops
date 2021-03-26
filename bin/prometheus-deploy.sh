@@ -4,6 +4,8 @@
 # ./prometheus-deploy.sh -n namespace - deploy to different namespace that monitoring.
 # ./prometheus-deploy.sh -v values file - use different custom values file.
 # ./prometheus-deploy.sh -d - delete deployment.
+#
+# Prerequisite: Helm version 3.04 or higher.
 
 # You can deploy your own custom values file by using the -f <values file> flag.
 set -oe pipefail
@@ -12,7 +14,6 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 ADDONS_BASE="${ADDONS_BASE:-${DIR}/../cluster/addons}"
 ADDONS_DIR="${ADDONS_BASE}/prometheus"
 PROM_VALUES="${ADDONS_DIR}/prometheus-operator.yaml"
-VERSION="0.38.0"
 
 USAGE="Usage: $0 [-n <namespace>] [-v <values file>] [-d]"
 
@@ -32,16 +33,20 @@ deploy() {
 
     # Add stable repo to helm
     helm repo add "stable" "https://charts.helm.sh/stable" --force-update
+    helm repo add "prometheus-community" "https://prometheus-community.github.io/helm-charts" --force-update
 
-    helm upgrade -i prometheus-operator stable/prometheus-operator  -f $PROM_VALUES --namespace=$NAMESPACE
+    helm upgrade -i prometheus-operator prometheus-community/kube-prometheus-stack  -f $PROM_VALUES --namespace=$NAMESPACE
 
     kubectl -n $NAMESPACE wait --for condition=established --timeout=60s \
         crd/prometheuses.monitoring.coreos.com \
         crd/servicemonitors.monitoring.coreos.com \
         crd/servicemonitors.monitoring.coreos.com \
         crd/podmonitors.monitoring.coreos.com \
-        crd/alertmanagers.monitoring.coreos.com
+        crd/alertmanagers.monitoring.coreos.com \
+        crd/alertmanagerconfigs.monitoring.coreos.com \
+        crd/probes.monitoring.coreos.com 
 
+    kubectl -n $NAMESPACE wait --for condition=Ready --timeout=60s pod --all
     # Install/Upgrade forgerock-servicemonitors
     helm upgrade -i forgerock-metrics ${ADDONS_DIR}/forgerock-metrics --namespace=$NAMESPACE
 }
@@ -51,11 +56,11 @@ delete() {
 
     set +e
 
-    # Delete Prometheus Operator Helm chart
-    helm uninstall prometheus-operator --namespace=$NAMESPACE
-
     # Delete forgerock-metrics Helm chart
     helm delete forgerock-metrics --namespace=$NAMESPACE
+
+    # Delete Prometheus Operator Helm chart
+    helm uninstall prometheus-operator --namespace=$NAMESPACE
 
     # Delete CRDs
     kubectl delete --wait=true crd prometheuses.monitoring.coreos.com
@@ -63,6 +68,9 @@ delete() {
     kubectl delete --wait=true crd servicemonitors.monitoring.coreos.com
     kubectl delete --wait=true crd podmonitors.monitoring.coreos.com
     kubectl delete --wait=true crd alertmanagers.monitoring.coreos.com
+    kubectl delete --wait=true crd alertmanagerconfigs.monitoring.coreos.com
+    kubectl delete --wait=true crd probes.monitoring.coreos.com
+    kubectl delete --wait=true crd thanosrulers.monitoring.coreos.com
 
     # Delete monitoring namespace
     kubectl delete ns $NAMESPACE
@@ -88,6 +96,8 @@ while getopts :n:v:d option; do
             exit 1;;
     esac
 done
+
+echo -e "\n**This script requires Helm version 3.04 or later due to changes in the behaviour of 'helm repo add' command.**\n"
 
 ## Validate arguments
 # Check if -n flag has been included

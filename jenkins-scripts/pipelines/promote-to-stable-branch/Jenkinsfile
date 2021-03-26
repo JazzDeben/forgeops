@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 ForgeRock AS. All Rights Reserved
+ * Copyright 2019-2021 ForgeRock AS. All Rights Reserved
  *
  * Use of this code requires a commercial software license with ForgeRock AS.
  * or with one of its affiliates. All use shall be exclusively subject
@@ -15,14 +15,43 @@ import java.net.URLDecoder
 import org.jenkinsci.plugins.workflow.steps.FlowInterruptedException
 
 @Library([
-    'forgerock-pipeline-libs@45b7fefa52bb82702c2ebd62d9c538fa7f218679',
+    'forgerock-pipeline-libs@a4f6060382c4edd70bedfd33adfa87120772fb53',
     'QaUtils@3e3d971d34ff3efdd1435dc3402c14614493ab52',
-    'java-pipeline-libs@0e109e8bb0bb067d8505aff78709623f81100177'
+    'java-pipeline-libs@eb0d680ae0a9b1aedaff7606c40228ce1fe7e30f'
 ])
 import com.forgerock.pipeline.Build
 import com.forgerock.pipeline.reporting.PipelineRun
+import com.forgerock.pipeline.reporting.PipelineRunLegacyAdapter
 
 def pipelineRun
+
+def platformUiDefaultValue = true
+def platformUIDescription = 'approx 35mins'
+if (env.BRANCH_NAME.startsWith('idcloud-')) {
+    platformUiDefaultValue = false
+    platformUIDescription += '<br>Platform UI tests are only available on master version, and so it is possible that they could be incompatable with idcloud branch'
+}
+
+def jobProperties = [
+    disableConcurrentBuilds(),
+    buildDiscarder(logRotator(numToKeepStr: '20')),
+    parameters([
+        string(name: 'PIT2_Greenfield', defaultValue: '10', description: '0 to not run<br>approx 1h per loop (minimum 2 loops when run)', trim: true),
+        booleanParam(name: 'PIT2_Upgrade', defaultValue: true, description: 'approx 45mins'),
+        booleanParam(name: 'PIT2_Perf_platform', defaultValue: true, description: 'approx 1h30mins'),
+        booleanParam(name: 'PIT2_Perf_am_authn', defaultValue: true, description: 'approx 1h'),
+        booleanParam(name: 'PIT2_Perf_am_access_token', defaultValue: true, description: 'approx 2h30mins'),
+        booleanParam(name: 'PIT2_Perf_idm_crud', defaultValue: true, description: 'approx 2h30mins'),
+        booleanParam(name: 'PIT2_Platform_UI', defaultValue: platformUiDefaultValue, description: platformUIDescription),
+        booleanParam(name: 'PIT2_IDCloud', defaultValue: true, description: 'approx 10mins<br>Tests are run against static tenant'),
+        booleanParam(name: 'Promote_to_stable_branch', defaultValue: true, description: "Promote product images to ${env.BRANCH_NAME}-stable"),
+    ])
+]
+
+if (params.PIT2_Greenfield.toInteger() == 1) {
+    currentBuild.result = 'ABORTED'
+    error 'Only 1 loop specified for Greenfield but minimum 2 required.'
+}
 
 if (env.TAG_NAME) {
     currentBuild.result = 'ABORTED'
@@ -34,20 +63,11 @@ if (env.TAG_NAME) {
             'For support, email releng@forgerock.com'
 } else if (env.BRANCH_NAME.equals('master')) {
     // only master has a scheduled build; jobs for other branches can be launched manually
-    properties([
-            disableConcurrentBuilds(),
-            buildDiscarder(logRotator(numToKeepStr: '20')),
-            pipelineTriggers([cron('H 0 * * *')]),
-            parameters([string(defaultValue: '10', description: '', name: 'GREENFIELD_REPEAT', trim: false)]),
-    ])
+    jobProperties.add(pipelineTriggers([cron('H 0 * * *')]))
+    properties(jobProperties)
 } else if (env.BRANCH_NAME.startsWith('idcloud-')) {
-    properties([
-            disableConcurrentBuilds(),
-            buildDiscarder(logRotator(numToKeepStr: '20')),
-            parameters([string(defaultValue: '10', description: '', name: 'GREENFIELD_REPEAT', trim: false)]),
-    ])
+    properties(jobProperties)
 } else {
-
     // safety guard, to prevent non-master branches from building
     currentBuild.result = 'ABORTED'
     error 'Only master PaaS release branches are allowed to run PIT#2 tests and promotion.\n' +
@@ -69,14 +89,24 @@ timestamps {
                 // Load the QaCloudUtils dynamically based on Lodestar commit promoted to Forgeops
                 library "QaCloudUtils@${commonModule.LODESTAR_GIT_COMMIT}"
 
-                pipelineRun = new PipelineRun(env, steps, 'forgeops', env.BRANCH_NAME, commonModule.FORGEOPS_GIT_COMMIT,
-                        commits: commonModule.getCurrentProductCommitHashes())
+                pipelineRun = new PipelineRunLegacyAdapter(PipelineRun.builder(env, steps)
+                        .pipelineName('forgeops-promote-to-stable-branch')
+                        .branch(commonModule.FORGEOPS_GIT_BRANCH)
+                        .commit(commonModule.FORGEOPS_GIT_COMMIT)
+                        .commits(commonModule.getCurrentProductCommitHashes())
+                        .committer(commonModule.FORGEOPS_GIT_COMMITTER)
+                        .commitMessage(commonModule.FORGEOPS_GIT_MESSAGE)
+                        .committerDate(dateTimeUtils.convertIso8601DateToInstant(commonModule.FORGEOPS_GIT_COMMITTER_DATE))
+                        .repo('forgeops')
+                        .build())
 
                 // Test stages
                 greenfieldTests = load("${stagesLocation}/pit2-greenfield-tests.groovy")
                 upgradeTests = load("${stagesLocation}/pit2-upgrade-tests.groovy")
                 perfTests = load("${stagesLocation}/pit2-perf-tests.groovy")
-                pit2Tests = load("${stagesLocation}/pit2-all-tests.groovy") // combines PERF, Greenfield, Upgrade
+                platformUiTests = load("${stagesLocation}/pit2-platform-ui-tests.groovy")
+                idCloudTests = load("${stagesLocation}/pit2-idcloud-tests.groovy")
+                pit2Tests = load("${stagesLocation}/pit2-all-tests.groovy") // combines Greenfield, Upgrade, Perf, Platform UI, IDCloud
 
                 promoteToStableBranch = load("${stagesLocation}/promote-to-stable-branch.groovy")
 
@@ -90,7 +120,9 @@ timestamps {
 
         pit2Tests.runStage(pipelineRun)
 
-        promoteToStableBranch.runStage(pipelineRun)
+        if (params.Promote_to_stable_branch.toBoolean()) {
+            promoteToStableBranch.runStage(pipelineRun)
+        }
 
         currentBuild.result = 'SUCCESS'
     }

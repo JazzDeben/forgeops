@@ -5,18 +5,18 @@ export NAME="medium"
 
 # cluster-up.sh retrieves the region from the user's gcloud config.
 # NODE_LOCATIONS refers to the zones to be used by CDM in the region. If your region doesn't include zones a,b or c then uncomment and set the REGION, ZONE and NODE_LOCATIONS appropriately to override:
-export REGION=us-east1
-export NODE_LOCATIONS="$REGION-b,$REGION-c,$REGION-d"
-export ZONE="$REGION-b" # required for cluster master
+# export REGION=us-east1
+# export NODE_LOCATIONS="$REGION-b,$REGION-c,$REGION-d"
+# export ZONE="$REGION-b" # required for cluster master
 
 # PRIMARY NODE POOL VALUES
-export MACHINE=c2-standard-16
+export MACHINE=c2-standard-30
 # 2 nodes per zone, total of 6 Primary nodes
 export NUM_NODES="2"
 export PREEMPTIBLE=""
 
 # DS NODE POOL VALUES
-export CREATE_DS_POOL=false
+# export CREATE_DS_POOL=true
 # export DS_MACHINE=c2-standard-16
 # # 2 nodes per zone, total of 6 DS nodes
 # export DS_NUM_NODES="2"

@@ -63,7 +63,7 @@ integration of IDM and AM.
    * The Access Manager Core Token Service (ds-cts).
 * A Gatling test harness, which exercises the basic deployment and can be modified to include additional tests.
 
-The 7.0 deployment provide the following additional enhancements:
+The 7.0 deployment provides the following additional enhancements:
 
 * AM and IDM are integrated, and share a common repository for users. The directory server instance
 (ds-idrepo) is used as the user store for both products, and as the managed repository for IDM objects. A
@@ -73,8 +73,14 @@ separate postgres SQL database is *NOT* required.
 
 ## Getting Started
 
-You'll need to install some third-party software, set up a Kubernetes cluster, and
-install the ForgeRock Identity Platform. 
+If you just want to observe the ForgeRock Identity Platform in action on a 
+Kubernetes cluster, you can try out our [CDQ (Cloud Deployment 
+Quickstart)](https://ea.forgerock.com/docs/forgeops/quickstart.html).
+You can get the CDQ up and running quickly, but its capabilities are _very_ 
+limited.   
+
+For a full CDK deployment, you'll need to install some third-party software, set
+up a Kubernetes cluster, and install the ForgeRock Identity Platform. 
 
 See the [CDK documentation](https://backstage.forgerock.com/docs/forgeops/7/index-cdk.html) 
 for detailed information about all these tasks.
@@ -96,7 +102,7 @@ The `export` command is used to export configuration from a running instance (e.
 Configuration is exported to `docker/$version/idm/conf` and is a full copy of the configuration including any changes.  
 
 **Amster export**  
-Amster only runs as a Kubernetes job so there is no running deployment.  The export command kicks of a new Amster job to export OAuth2Clients and ig-agent config from AM.  
+Amster only runs as a Kubernetes job so there is no running deployment.  The export command kicks of a new Amster job to export dynamic data(application and policy data) from AM.  
 Configuration is exported to `docker/$version/amster/config`.
 
 **AM export**  
@@ -111,6 +117,9 @@ bin/config.sh export
 # Export the IDM configuration to the docker folder
 bin/config.sh --component idm export
 ```
+
+**IMPORT (AMSTER ONLY)**  
+The `import` command is used to run ad hoc dynamic data(application and policy data) imports from the `docker` staging folder to AM by running an Amster job. Note that the import command is for Amster only, so requires no further arguments: `config.sh import`.
 
 **SAVE**  
 The `save` command copies the contents of the Docker configuration *back* to the `config/` folder where it can be versioned in Git.  

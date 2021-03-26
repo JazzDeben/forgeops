@@ -1,0 +1,40 @@
+timeout: 1500s
+steps:
+# clone all the things
+- name: gcr.io/cloud-builders/git
+  args: ['fetch', '--all']
+
+- name: 'gcr.io/cloud-builders/docker'
+  entrypoint: 'bash'
+  env:
+    - IMAGE_TAG=$TAG_NAME
+  args:
+    - '-c'
+    - |-
+      ./bin/docker-clone
+
+- name: 'gcr.io/$PROJECT_ID/skaffold'
+  entrypoint: bash
+  env:
+    - IMAGE_TAG=$TAG_NAME
+  args:
+    - '-c'
+    - |-
+      ./bin/build-cdk-image-tags
+
+- name: 'gcr.io/engineering-devops/repo'
+  entrypoint: bash
+  secretEnv:
+    - 'GH_TOKEN'
+  env:
+    - DOCKER_REPO=gcr.io/forgeops-public
+    - IMAGE_TAG=$TAG_NAME
+  args:
+    - '-c'
+    - |-
+      make -f docker/cli-tools/repo/Makefile release
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/1067706085367/secrets/GH_API_CLOUDBUILD/versions/2
+      env: 'GH_TOKEN'
