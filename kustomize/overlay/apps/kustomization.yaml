@@ -3,8 +3,17 @@ commonLabels:
   app.kubernetes.io/part-of: "forgerock"
 resources:
 - ../../base/am-cdk
-- ../../base/idm
+- ../../base/idm-cdk
 - ../../base/rcs-agent
 - ../../base/end-user-ui
 - ../../base/login-ui
 - ../../base/admin-ui
+
+# Set the image to the dev images that are built every night
+images:
+- name: am
+  newName: gcr.io/forgeops-public/am
+  newTag: dev
+- name: idm
+  newName: gcr.io/forgeops-public/idm
+  newTag: dev

@@ -5,7 +5,7 @@
 dest=${1:-"/am-config/config/placeholdered-config.tar"}
 
 cd "/am-config"
-tar -cv "config/services" -f $dest &
+tar -c "config/services" -f $dest &
 pid=$!
 wait
 

@@ -175,7 +175,7 @@ upgrade_config(){
 	kubectl exec $pod -- /home/forgerock/tar-config.sh
 	kubectl cp $pod:/am-config/config/placeholdered-config.tar "$UPGRADER_DIR/placeholdered-config.tar"
 
-	tar -xvf $UPGRADER_DIR/placeholdered-config.tar -C $UPGRADER_DIR
+	tar -xf $UPGRADER_DIR/placeholdered-config.tar -C $UPGRADER_DIR
 
 	cp -R "$UPGRADER_DIR/config"  "$AM_DIR"
 	rm -fr "$UPGRADER_DIR/config"
@@ -190,26 +190,7 @@ upgrade_config(){
 # clear the product configs $1 from the docker directory.
 clean_config()
 {
-    for c in "${@}";
-    do
-        ## remove previously copied configs
-        echo "removing $c configs from $DOCKER_ROOT"
-
-        if [ "$c" == "amster" ]; then
-            rm -rf "$DOCKER_ROOT/$c/config"
-
-	    elif [ "$c" == "am" ]; then
-	    	rm -rf "$DOCKER_ROOT/$c/config"
-
-        elif [ "$c" == "idm" ]; then
-            rm -rf "$DOCKER_ROOT/$c/conf"
-	    	rm -rf "$DOCKER_ROOT/$c/script"
-	    	rm -rf "$DOCKER_ROOT/$c/ui"
-        elif [ "$c" == "ig" ]; then
-            rm -rf "$DOCKER_ROOT/$c/config"
-            rm -rf "$DOCKER_ROOT/$c/scripts"
-        fi
-    done
+    $script_dir/platform-config --clean
 }
 
 patch_container() {
@@ -266,20 +247,7 @@ patch_container() {
 # Copy the product config $1 to the docker directory.
 init_config()
 {
-    echo $@
-    if [[ -d "${PROFILE_ROOT}/$1" ]]
-    then
-	    for p in "${@}"; do
-            echo "cp -r ${PROFILE_ROOT}/$p" "$DOCKER_ROOT"
-            cp -r "${PROFILE_ROOT}/$p" "$DOCKER_ROOT"
-        done
-        return
-    fi
-    # get patch profile name
-    patch_profile=$(basename "${PROFILE_ROOT}")
-
-    echo "patch profile found, this doesn't support component selection"
-    patch_container cdk "$patch_profile"
+    ${script_dir}/platform-config --clean --force --profile-dir "config/7.0/${_arg_profile}"
 }
 
 # Show the differences between the source configuration and the current Docker configuration
@@ -301,54 +269,23 @@ export_config(){
 		idm)
 			printf "\nExporting IDM configuration...\n\n"
 			rm -fr  "$DOCKER_ROOT/idm/conf"
-			kubectl cp idm-0:/opt/openidm/conf "$DOCKER_ROOT/idm/conf"
+			pod=$(kubectl get pod -l app=idm -o jsonpath='{.items[0].metadata.name}')
+			kubectl cp -c openidm $pod:/opt/openidm/conf "$DOCKER_ROOT/idm/conf"
+			printf "\nIDM configuration files have been exported to ${DOCKER_ROOT}/idm/config."
 			;;
 		amster)
 			rm -fr "$DOCKER_ROOT/amster/config"
 			mkdir -p "$DOCKER_ROOT/amster/config"
+			echo "$script_dir/amster" export "$DOCKER_ROOT/amster/config"
 			"$script_dir/amster" export "$DOCKER_ROOT/amster/config"
-			echo "Removing any existing Amster jobs..."
-			kubectl delete job amster || true
-
-			# Deploy Amster job
-			echo "Deploying Amster job..."
-			exp=$(skaffold run -p amster-export)
-
-			# Check to see if Amster pod is running
-			echo "Waiting for Amster pod to come up."
-			while ! [[ "$(kubectl get pod -l app=amster --field-selector=status.phase=Running)" ]];
-			do
-					sleep 5;
-			done
-			printf "Amster job is responding..\n\n"
-
-			pod=`kubectl get pod -l app=amster -o jsonpath='{.items[0].metadata.name}'`
-
-			# Export OAuth2Clients and IG Agents
-			echo "Executing Amster export within the amster pod"
-			kubectl exec $pod -it /opt/amster/export.sh
-
-			# Copy files locally
-			echo "Copying the export to the ./tmp directory"
-			kubectl cp $pod:/var/tmp/amster/realms/ "$DOCKER_ROOT/amster/config"
-
-			printf "Dynamic config exported\n\n"
-
-			# Shut down Amster job
-			printf "Shutting down Amster job...\n"
-
-			del=$(skaffold delete -p amster-export)
 			;;
 		am)
 			# Export AM configuration
 			printf "\nExporting AM configuration..\n\n"
-
+            rm -fr  "$DOCKER_ROOT/am/config"
 			pod=$(kubectl get pod -l app=am -o jsonpath='{.items[0].metadata.name}')
-
-			kubectl exec $pod -- /home/forgerock/export.sh - | (cd "$DOCKER_ROOT"/am; tar xvf - )
-
-			printf "\nAny changed configuration files have been exported into ${DOCKER_ROOT}/am/config."
-			printf "\nCheck any changed files before saving back to the config folder to ensure correct formatting/functionality."
+			kubectl exec $pod -c openam -- /home/forgerock/export.sh - | (cd "$DOCKER_ROOT"/am; tar xf - )
+			printf "\nAM configuration files have been exported to ${DOCKER_ROOT}/am/config."
 
 			# Upgrade config and reapply placeholders
 			upgrade_config
@@ -448,7 +385,7 @@ save_config()
 			cp -R "$DOCKER_ROOT/idm/conf"  "$PROFILE_ROOT/idm"
 			;;
 		amster)
-			printf "\nSaving Amster configuration..\n\n"
+			printf "\nSaving Amster configuration\n"
 			#****** REMOVE EXISTING FILES ******#
 			rm -fr "$PROFILE_ROOT/amster/config"
 			mkdir -p "$PROFILE_ROOT/amster/config"
@@ -463,27 +400,37 @@ save_config()
 			echo "Adding back amsterVersion placeholder ..."
 			echo "Adding back FQDN placeholder ..."
 			echo "Removing 'userpassword-encrypted' fields ..."
+			echo ""
 			find "$DOCKER_ROOT/amster/config" -name "*.json" \
 					\( -exec sed -i '' "s/${fqdn}/\&{fqdn}/g" {} \; -o -exec true \; \) \
 					\( -exec sed -i '' 's/"amsterVersion" : ".*"/"amsterVersion" : "\&{version}"/g' {} \; -o -exec true \; \) \
 					-exec sed -i '' '/userpassword-encrypted/d' {} \; \
 
 			# Fix passwords in OAuth2Clients with placeholders or default values.
-			CLIENT_ROOT="$DOCKER_ROOT/amster/config/root/OAuth2Clients"
-			IGAGENT_ROOT="$DOCKER_ROOT/amster/config/root/IdentityGatewayAgents"
+			CLIENT_ROOT="$DOCKER_ROOT/amster/config/realms/root/OAuth2Clients"
+			IGAGENT_ROOT="$DOCKER_ROOT/amster/config/realms/root/IdentityGatewayAgents"
 
-			echo "Add back password placeholder with defaults"
+			echo "Adding back password placeholder with defaults in these files:"
+			echo ""
+			echo "idm-provisioning.json"
 			sed -i '' 's/\"userpassword\" : null/\"userpassword\" : \"\&{idm.provisioning.client.secret|openidm}\"/g' ${CLIENT_ROOT}/idm-provisioning.json
+			echo "idm-resource-server.json"
 			sed -i '' 's/\"userpassword\" : null/\"userpassword\" : \"\&{idm.rs.client.secret|password}\"/g' ${CLIENT_ROOT}/idm-resource-server.json
+			echo "resource-server.json"
 			sed -i '' 's/\"userpassword\" : null/\"userpassword\" : \"\&{ig.rs.client.secret|password}\"/g' ${CLIENT_ROOT}/resource-server.json
+			echo "oauth2.json"
 			sed -i '' 's/\"userpassword\" : null/\"userpassword\" : \"\&{pit.client.secret|password}\"/g' ${CLIENT_ROOT}/oauth2.json
+			echo "ig-agent.json"
 			sed -i '' 's/\"userpassword\" : null/\"userpassword\" : \"\&{ig.agent.password|password}\"/g' ${IGAGENT_ROOT}/ig-agent.json
 
 			#****** COPY FIXED FILES ******#
 			cp -R "$DOCKER_ROOT/amster/config"  "$PROFILE_ROOT/amster"
 
-			printf "\n*** The above fixes have been made to the Amster files. If you have exported new files that should contain commons placeholders or passwords, please update the rules in this script.***\n\n"
+			printf "\nThe above fixes have been made to the Amster files."
+			printf "\nIf you have exported new files that should contain commons "
+			printf "\nplaceholders or passwords, please update the rules in this script.\n\n"
 			;;
+
 		*)
 			printf "\nSaving AM configuration..\n\n"
 			#****** REMOVE EXISTING FILES ******#
@@ -494,6 +441,21 @@ save_config()
 			cp -R "$DOCKER_ROOT/am/config"  "$PROFILE_ROOT/am"
 		esac
 	done
+}
+
+add_profile ()
+{
+
+    # if the version isn't 7.0 use it as the branch for platform-images
+    [[ $_arg_version != "7.0" ]] && branch_name=$_arg_version
+    if ! ${script_dir}/platform-config --profile fidc --branch-name "${branch_name}"
+    then
+        echo "Failed to clone addon profile"
+        exit 1;
+    fi
+    # add amster
+    cp -r "${script_dir}/../config/7.0/cdk/amster" "$DOCKER_ROOT"
+
 }
 
 # chdir to the script root/..
@@ -509,6 +471,12 @@ else
 fi
 
 case "$_arg_operation" in
+
+init-addon-profile)
+	clean_config idm ig amster am
+    add_profile
+    ;;
+
 init)
 	clean_config "${COMPONENTS[@]}"
 	init_config "${COMPONENTS[@]}"

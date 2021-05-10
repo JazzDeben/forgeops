@@ -1,13 +1,14 @@
 # Note: M5 integration with AM currently not working
-FROM gcr.io/forgerock-io/idm/pit1:7.1.0-fb935bdb3b7e0e5288399081b3b3476ba1f093ff
+FROM gcr.io/forgerock-io/idm/pit1:7.2.0-5f4b35d4a4414d040949a500e6c4a188e09afdd7
 
 # Harden IDM by removing the Felix OSGI Console. Unless you are a ForgeRock developer, the
 # console is rarely required. Your configuration should NOT include conf/felix.webconsole.json
 RUN rm -f bundle/org.apache.felix.webconsole*.jar  && \
     rm -f bundle/openidm-felix-webconsole-*.jar
 
-# Removes any existing conf files that might conflict with our config. This includes the embedded ds repo.
-RUN rm -fr /opt/openidm/conf
+# Removes unwanted default config bundled out of the box.
+RUN rm conf/felix.webconsole.json
+RUN rm conf/selfservice.propertymap.json
 
 # Remove this once https://bugster.forgerock.org/jira/browse/OPENIDM-16100 is integrated
 # This sets the RAM based on cgroups to 65% of the container memory

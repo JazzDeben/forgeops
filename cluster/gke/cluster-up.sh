@@ -18,14 +18,14 @@ if [[ -f $HOME/.forgeops.${FO_ENV}.sh ]];
 then
     . $HOME/.forgeops.${FO_ENV}.sh
 fi
-is_fr_staff=$(IsForgeRock)
-if [ "$is_fr_staff" == "yes" ];
+IS_FORGEROCK=$(IsForgeRock)
+if [ "$IS_FORGEROCK" == "yes" ];
 then
     if ! EnforceEntSecTags;
     then
-        echo "ForgeRock staff are required to have tags that meet Enterprise Security rules."
-        echo "Please review $HOME/.forgeops.${ENV}.sh"
-        echo "If this isn't applicable run with the environment variable IS_FORGEROCK=no"
+        echo "ForgeRock staff are required to add specific labels to their"
+        echo "Kubernetes clusters. Configure $HOME/.forgeops.${ENV}.sh so that"
+        echo "these labels are added to your clusters."
         exit 1
     fi
     ASSET_LABELS="--labels es_zone=${ES_ZONE},es_ownedby=${ES_OWNEDBY},es_managedby=${ES_MANAGEDBY},es_businessunit=${ES_BUSINESSUNIT},es_useremail=${ES_USEREMAIL},billing_entity=${BILLING_ENTITY}"

@@ -76,8 +76,6 @@ patchesStrategicMerge:
           runAsUser: 11111
           fsGroup: 0
         volumes:
-        - name: fbc
-          emptyDir: {}
         - name: git
           emptyDir: {}
         - name: dev-utils

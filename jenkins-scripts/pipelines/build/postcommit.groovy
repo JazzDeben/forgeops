@@ -86,8 +86,24 @@ def postBuildTests(PipelineRunLegacyAdapter pipelineRun) {
     }
 }
 
+/**
+ * Uses the provided pipelineRun object create PR to Platform Images with ForgeOps commit.
+ *
+ * @param pipelineRun Used for running tests as part of the pipeline
+ */
+def createPlatformImagesPR(PipelineRunLegacyAdapter pipelineRun) {
+    try {
+        createPlatformImagesPR.runStage(pipelineRun)
+        currentBuild.result = 'SUCCESS'
+    } catch (exception) {
+        currentBuild.result = 'FAILURE'
+        sendSlackNotification("Error occurred while running postcommit tests")
+        throw exception
+    }
+}
+
 private void sendSlackNotification(String msgDetails) {
-    slackUtils.sendStatusMessage('#cloud-deploy-notify', currentBuild.result, msgDetails)
+    slackUtils.sendStatusMessage('#forgeops-notify', currentBuild.result, msgDetails)
 }
 
 return this
