@@ -1,0 +1,28 @@
+# The claim for the backup storage volume. This must be large enough to host the ldif or ds backup
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: ds-backup
+spec:
+  accessModes: [ "ReadWriteOnce" ]
+  resources:
+    requests:
+      storage: 10Gi
+---
+# A sample pvc made from a snapshot / clone
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: ds-data-clone
+  annotations:
+    pv.beta.kubernetes.io/gid: "0"
+spec:
+  storageClassName: standard-rwo
+  resources:
+    requests:
+      storage: 10Gi
+  accessModes: [ "ReadWriteOnce" ]
+  dataSource:
+    name: ds-snapshot1
+    kind: VolumeSnapshot
+    apiGroup: snapshot.storage.k8s.io

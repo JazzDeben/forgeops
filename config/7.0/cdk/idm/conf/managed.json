@@ -44,7 +44,9 @@
                     "ownerOfOrg",
                     "adminOfOrg",
                     "memberOfOrg",
-                    "memberOfOrgIDs"
+                    "memberOfOrgIDs",
+                    "activeDate",
+                    "inactiveDate"
                 ],
                 "properties" : {
                     "_id" : {
@@ -72,13 +74,18 @@
                         "type" : "string",
                         "viewable" : false,
                         "searchable" : false,
-                        "minLength" : 8,
                         "userEditable" : false,
                         "scope" : "private",
                         "isProtected": true,
                         "usageDescription" : "",
                         "isPersonal" : false,
                         "policies" : [
+                            {
+                                "policyId" : "minimum-length",
+                                "params" : {
+                                    "minLength" : 8
+                                }
+                            },
                             {
                                 "policyId" : "at-least-X-capitals",
                                 "params" : {
@@ -505,7 +512,6 @@
                         "type" : "string",
                         "searchable" : true,
                         "userEditable" : true,
-                        "minLength" : 1,
                         "usageDescription" : "",
                         "isPersonal" : true,
                         "policies" : [
@@ -820,6 +826,26 @@
                             "type" : "string",
                             "title" : "org identifiers"
                         }
+                    },
+                    "activeDate" : {
+                        "title": "Active Date",
+                        "description": "Active Date",
+                        "viewable": true,
+                        "type": "string",
+                        "searchable": false,
+                        "userEditable": false,
+                        "usageDescription": "",
+                        "isPersonal": false
+                    },
+                    "inactiveDate" : {
+                        "title": "Inactive Date",
+                        "description": "Inactive Date",
+                        "viewable": true,
+                        "type": "string",
+                        "searchable": false,
+                        "userEditable": false,
+                        "usageDescription": "",
+                        "isPersonal": false
                     }
                 },
                 "type" : "object",

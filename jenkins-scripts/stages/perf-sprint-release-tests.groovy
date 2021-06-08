@@ -13,21 +13,23 @@ import com.forgerock.pipeline.reporting.PipelineRunLegacyAdapter
 void runStage(PipelineRunLegacyAdapter pipelineRun) {
     node('perf-long-cloud') {
         def config_common = [
-                STASH_LODESTAR_BRANCH: commonModule.LODESTAR_GIT_COMMIT,
-                STASH_FORGEOPS_BRANCH: commonModule.FORGEOPS_GIT_COMMIT,
-                PIPELINE_NAME        : 'ForgeOps - Perf-Sprint-Release',
-                CHECK_REGRESSION     : true,
-                MAX_VARIATION        : '0.10',
-                CLUSTER_DOMAIN       : 'perf-sprint-release.forgeops.com',
-                TIMEOUT              : '12',
-                TIMEOUT_UNIT         : 'HOURS',
+                STASH_LODESTAR_BRANCH                   : commonModule.LODESTAR_GIT_COMMIT,
+                STASH_FORGEOPS_BRANCH                   : commonModule.FORGEOPS_GIT_COMMIT,
+                PIPELINE_NAME                           : 'ForgeOps - Perf-Sprint-Release',
+                CHECK_REGRESSION                        : true,
+                MAX_VARIATION                           : '0.10',
+                CLUSTER_DOMAIN                          : 'perf-sprint-release.forgeops.com',
+                TIMEOUT                                 : '12',
+                TIMEOUT_UNIT                            : 'HOURS',
+                DEPLOYMENT_CREATEPROMETHEUSSNAPSHOT     : 'true',
+                DEPLOYMENT_PROMETHEUSSNAPSHOTBUCKETURL  : 'gs://performance-bucket-us-east1/prometheus_snapshots'
         ]
 
         def parentStageName = 'PERF Sprint Release'
         def tags = ['performance', 'sprint_release']
 
         // perf am authn rest test
-        if (params.PerfSprintRelease_authn_rest.toBoolean()) {
+        if (params.PerfSprintRelease_authn_rest) {
             def stageName = "${parentStageName} am_authn"
             def normalizedStageName = dashboard_utils.normalizeStageName(stageName)
 
@@ -57,7 +59,7 @@ void runStage(PipelineRunLegacyAdapter pipelineRun) {
         }
 
         // perf am access token test
-        if (params.PerfSprintRelease_access_token.toBoolean()) {
+        if (params.PerfSprintRelease_access_token) {
             def stageName = "${parentStageName} am_access_token"
             def normalizedStageName = dashboard_utils.normalizeStageName(stageName)
 
@@ -87,7 +89,7 @@ void runStage(PipelineRunLegacyAdapter pipelineRun) {
         }
 
         // perf platform test
-        if (params.PerfSprintRelease_platform.toBoolean()) {
+        if (params.PerfSprintRelease_platform) {
             def stageName = "${parentStageName} platform"
             def normalizedStageName = dashboard_utils.normalizeStageName(stageName)
 
@@ -117,7 +119,7 @@ void runStage(PipelineRunLegacyAdapter pipelineRun) {
         }
 
         // perf IDM Crud test
-        if (params.PerfSprintRelease_simple_managed_users.toBoolean()) {
+        if (params.PerfSprintRelease_simple_managed_users) {
             def stageName = "${parentStageName} idm_crud"
             def normalizedStageName = dashboard_utils.normalizeStageName(stageName)
 

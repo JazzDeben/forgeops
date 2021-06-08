@@ -1,4 +1,4 @@
-FROM gcr.io/forgerock-io/ds/pit1:7.2.0-02155c16c113dffac86a46d963167db60b2fc3ef
+FROM gcr.io/forgerock-io/ds/pit1:7.2.0-46de471f099cadecd47654d1c22cfcbf62342eb3
 
 # If you want to update any o/s software, or require root access, uncomment the lines below
 # Ensure that the /opt/opendj is owned by forgeorock:root
@@ -13,9 +13,6 @@ COPY --chown=forgerock:root scripts /opt/opendj/scripts
 
 # Ldif for the alpha/bravo realm config
 COPY --chown=forgerock:root idrepo/*.ldif  /var/tmp/
-
-# To experiment with a modified entrypoint, uncomment:
-# COPY --chown=forgerock:root scripts/docker-entrypoint.sh /opt/opendj
 
 # This primes the idrepo datastore with the required base policy entries in ou=am-config
 # AM does not yet dynamically create the realm policy entries when it attaches to a new dynamic config

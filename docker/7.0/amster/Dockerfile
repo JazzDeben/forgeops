@@ -1,4 +1,4 @@
-FROM gcr.io/forgerock-io/amster/pit1:7.2.0-a4fab9f24be189148c5cbcf69764d5243d926b7e
+FROM gcr.io/forgerock-io/amster/pit1:7.2.0-36cf9d3f2386a1eb0836d6d51c00769dc26ed847
 
 USER root
 
@@ -14,5 +14,8 @@ USER forgerock
 ENV SERVER_URI /am
 
 COPY --chown=forgerock:root . /opt/amster
+
+# This is needed to make amster happy. It wants to create a preferences directory
+RUN chmod 777 /opt/amster
 
 ENTRYPOINT [ "/opt/amster/docker-entrypoint.sh" ]

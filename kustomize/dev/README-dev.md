@@ -7,10 +7,7 @@ The developer profile provides:
 * **Reduced footprint deployment.**
   There is a single DS instance for the CTS and idrepo instead of multiple
   instances.
-* **Developer Git server.**
-  IDM and AM configurations are saved to an "emptyDir" volume, and then pushed
-  to a Git server pod running in the developer's namespace. Any changes the
-  developer makes in the AM and IDM UIs are be saved to Git.
+
 * **Phased deployment.** The developer profile is deployed in phases
   rather than by using a one-step _skaffold run_ deployment. The phased
   deployment lets you iterate on development without needing to reload users or
@@ -119,7 +116,7 @@ For example, let's say the user wants to deploy AM, IDM, idrepo and CTS. In orde
 the developer profile provides a single DS instance for the CTS and idrepo. Users can easily change this configuration:
 
 ```bash
-# Deploy the base bundle. This bundle is always required. 
+# Deploy the base bundle. This bundle is always required.
 # Note: The default FQDN is set to default.iam.example.com. You can use "-a $FQDN" to change it while deploying "base"
 ./bin/cdk install base --fqdn myownfqdn.mydomain.com
 # Change the configmap directing AM to use ds-cts as CTS server
@@ -173,33 +170,14 @@ kubectl set image deployment admin-ui admin-ui=gcr.io/forgeops-public/admin-ui:m
 ./bin/cdk delete
 ```
 
-## Pulling Files From The Git Server
+## Exporting changes
 
-The _git-server_ pod contains the updates that you have made to the AM and IDM configurations.
-This Git server is deployed by default as part of the developer profile. It is also present in the "base" bundle.
 
-There are two ways to extract the configs from the git server:
-
-1. Clone the repo:
-
-    ```bash
-    kubectl port-forward deployment/git-server 8080:8080
-
-    # In a different shell
-    git clone http://git:forgerock@localhost:8080/fr-config.git
-    ```
-
-    The AM updates are in the `am` branch, and the IDM updates are in the `idm` branch.
-    It is worth noting that the `am` configs are stored "raw" in the repo.
-    The user is expected to run the `am-config-upgrader` to replace the necessary placeholders.
 1. Export the config using `./bin/config.sh`
-
-    This is the most streamlined approach available to export configs. The script copies the data and runs
-    the `am-config-upgrader`. It then copies the configs to your local environment.
 
     ```bash
     # Extract the configurations from the git-server and copy them to your local "./docker" folder
-    ./config.sh export-dev
+    ./config.sh export
     # Copy the configs from ./docker/ into ./config
     ./config.sh save
     ```
